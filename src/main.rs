@@ -42,9 +42,9 @@ fn replace_shell_vars(input: &str) -> String {
 fn main() {
     const SEPARATOR: &str = "--";
 
-
+    // does args over args_os present any actual problems? Unfamiliar with windows shell.
     let mut args = env::args().skip(1).peekable();
-    let mut pwd = None;
+    let mut pwd: Option<PathBuf> = None;
 
     if args.peek().map(String::as_str) == Some("exec") {
         args.next();
@@ -62,7 +62,7 @@ fn main() {
             let key = caps.get(1).unwrap().as_str();
             let value = caps.get(2).unwrap().as_str();
             if key == "PWD" {
-                pwd = Some(value.to_string());
+                pwd = Some(PathBuf::from(value));
             } else {
                 env_vars.insert(key.into(), value.into());
             }
@@ -79,14 +79,23 @@ fn main() {
         exit(1);
     }
 
+    let cargo_prefix = find_cargo_prefix();
+
+
     let mut command = if argv[0] == "-s" {
-        if argv.len() < 3 {
+        if argv.len() < 2 {
             eprintln!("error: -s requires a shell and a command");
             exit(1);
         }
-        let shell = &argv[1];
-        let script = &argv[2];
-        let script_args = &argv[3..];
+        let (shell, script, script_args) = if argv.len() >= 3 {
+            (argv[1].clone(), &argv[2], &argv[3..])
+        } else {
+            let shell = env::var("SHELL").unwrap_or_else(|_| {
+                eprintln!("error: -s requires a shell, or $SHELL to be set");
+                exit(1)
+            });
+            (shell, &argv[1], &argv[2..])
+        };
 
         let split_index = script_args.iter().position(|arg| arg == SEPARATOR).unwrap_or(script_args.len());
 
@@ -108,6 +117,14 @@ fn main() {
             .collect::<Vec<String>>()
             .join(" ");
 
+        if pwd.is_none() {
+            if let Some(prefix) = &cargo_prefix {
+                pwd = Some(prefix.clone());
+            } else {
+                eprintln!("warning: Could not find root cargo directory, directory not changed");
+            }
+        }
+
         let mut command = Command::new(shell);
         command.arg("-c");
         command.arg(format!("f() {{ {script}; }}; f \"$@\""));
@@ -117,6 +134,13 @@ fn main() {
         command.env("RIGHT_ARGS", right_env);
         command.env("_LEFT_ARGS", left_env_escaped);
         command.env("_RIGHT_ARGS", right_env_escaped);
+
+        if let Ok(current) = env::current_dir() {
+            command.env("LPWD", current);
+        } {
+            eprintln!("warning: Could not determine current directory to store in LPWD");
+        }
+
         command
     } else {
         let mut command = Command::new(&argv[0]);
@@ -130,13 +154,10 @@ fn main() {
 
     command.envs(env_vars);
 
-    let cargo_prefix = find_cargo_prefix();
-
-    if let Some(pwd) = pwd {
-        let path = PathBuf::from(pwd);
+    if let Some(path) = pwd {
         if path.is_relative() {
-            if let Some(prefix) = find_cargo_prefix() {
-                let path = prefix.join(path);
+            if let Some(ref prefix) = cargo_prefix {
+                let path = prefix.join(&path);
                 if let Err(e) = env::set_current_dir(&path) {
                     eprintln!("error: could not change to directory '{}': {}", path.display(), e);
                     exit(1);
@@ -151,7 +172,7 @@ fn main() {
         }
     }
 
-    if let Some(prefix) = cargo_prefix {
+    if let Some(ref prefix) = cargo_prefix {
         command.env("CARGO_PREFIX", prefix);
     }
 

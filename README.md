@@ -33,6 +33,8 @@ You can execute an inline shell script using the `-s` flag:
 ```toml
 [alias]
 once = ['exec', '-s', 'zsh', 'rustc $1 && ./${1%.*}']
+# If only one argument follows, try and default to `$SHELL`
+once = ['exec', '-s', 'rustc $1 && ./${1%.*}']
 ```
 
 and then invoke with `cargo once script.rs`.
@@ -55,6 +57,7 @@ For your convenience, a few environment variables are set inside the shell:
 
 
 - `CARGO_PREFIX` finds the nearest ancestor directory with `Cargo.toml`
+- `LPWD` contains the original working directory.
 - `_LEFT_ARGS` and `_RIGHT_ARGS` contain the input arguments split at `--`, and are useful when wrapping other cargo subcommands:
 ```toml
 cc = ['exec', '-s', 'sh', 'if [ -e "$CARGO_PREFIX/clippy.toml" ]; then eval cargo clippy "$_LEFT_ARGS" -- -A clippy::uninlined_format_args "$_RIGHT_ARGS"; else cargo check; fi']
@@ -64,7 +67,7 @@ cc = ['exec', '-s', 'sh', 'if [ -e "$CARGO_PREFIX/clippy.toml" ]; then eval carg
 ```
 
 You can also set your own environment variables preceding all arguments:
-- Additionally, the working directory can be set with `PWD`, where relative paths are resolved with respect to `CARGO_PREFIX`.
+- Additionally, the working directory can be set with `PWD`, where relative paths are resolved with respect to `CARGO_PREFIX`. When using the `-s` flag, if `PWD` is not provided, the working directory is automatically set to `CARGO_PREFIX`.
 ```toml
 [alias]
 "@mytask" = "exec PWD=examples cargo run compose.yaml -t quadlet -o outputs"
