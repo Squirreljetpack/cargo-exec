@@ -1,14 +1,13 @@
 [package]
 name = "cargo-alias-exec"
-version = "0.1.1"
-edition = "2024"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/Squirreljetpack/cargo-exec"
-readme = "README.md"
-keywords = ["cli", "cargo", "exec"]
+version = "0.1.2"
 categories = ["command-line-utilities", "development-tools::cargo-plugins"]
+edition = "2024"
+keywords = ["cli", "cargo", "exec"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/Squirreljetpack/cargo-exec"
 description = "Extend cargo aliases to arbitrary commands"
-
 
 [[bin]]
 name = "cargo-exec"

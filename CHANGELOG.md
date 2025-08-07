@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2025-08-04
+
+- Only change directory with the `-r` flag
+- Refactor cli parsing
+
 ## [0.1.1] - 2025-08-04
 
 - When using the `-s` flag, if `PWD` is not provided, the working directory is automatically set to `CARGO_PREFIX`.

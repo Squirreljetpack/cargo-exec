@@ -1,10 +1,10 @@
+use regex::Regex;
 use std::collections::HashMap;
 use std::env;
-use std::path::PathBuf;
-use std::process::{Command, exit};
 #[cfg(not(windows))]
 use std::os::unix::process::CommandExt;
-use regex::Regex;
+use std::path::PathBuf;
+use std::process::{exit, Command};
 
 fn find_cargo_prefix() -> Option<PathBuf> {
     let mut current = env::current_dir().ok()?;
@@ -18,18 +18,20 @@ fn find_cargo_prefix() -> Option<PathBuf> {
     }
 }
 
-
 const VAR_REGEX: &str = "[A-Za-z_][A-Za-z0-9_]*";
 
 fn replace_shell_vars(input: &str) -> String {
-    let re = Regex::new(&format!(r"(?P<escape>\\)?\$(?P<var>{VAR_REGEX}|\{{{VAR_REGEX}\}})")).unwrap();
+    let re = Regex::new(&format!(
+        r"(?P<escape>\\)?\$(?P<var>{VAR_REGEX}|\{{{VAR_REGEX}\}})"
+    ))
+    .unwrap();
     re.replace_all(input, |caps: &regex::Captures| {
         if caps.name("escape").is_some() {
             format!("${}", &caps["var"])
         } else {
             let var = &caps["var"];
             let key = if var.starts_with('{') && var.ends_with('}') {
-                &var[1..var.len()-1]
+                &var[1..var.len() - 1]
             } else {
                 var
             };
@@ -50,6 +52,23 @@ fn main() {
         args.next();
     }
 
+    // argparse
+
+    let mut shell_opt = false;
+    let mut root_opt = false;
+    let mut shell: Option<PathBuf> = None;
+
+    if let Some(s) = args.next_if(|s| s.starts_with('-')) {
+        for c in s.chars().skip(1) {
+            match c {
+                's' => shell_opt = true,
+                'r' => root_opt = true,
+                _ => eprintln!("warning: invalid option -{c}, ignoring"),
+            }
+        }
+    }
+
+    // parse env var
     let argv: Vec<String> = args.collect();
 
     let env_var_re = Regex::new(&format!(r"^({VAR_REGEX})=(.*)$")).unwrap();
@@ -63,6 +82,8 @@ fn main() {
             let value = caps.get(2).unwrap().as_str();
             if key == "PWD" {
                 pwd = Some(PathBuf::from(value));
+            } else if key == "SHELL" {
+                shell = Some(PathBuf::from(value));
             } else {
                 env_vars.insert(key.into(), value.into());
             }
@@ -79,72 +100,60 @@ fn main() {
         exit(1);
     }
 
-    let cargo_prefix = find_cargo_prefix();
-
-
-    let mut command = if argv[0] == "-s" {
-        if argv.len() < 2 {
-            eprintln!("error: -s requires a shell and a command");
-            exit(1);
-        }
-        let (shell, script, script_args) = if argv.len() >= 3 {
-            (argv[1].clone(), &argv[2], &argv[3..])
-        } else {
-            let shell = env::var("SHELL").unwrap_or_else(|_| {
+    let mut command = if shell_opt {
+        if shell.is_none() {
+            let _shell = env::var("SHELL").unwrap_or_else(|_| {
                 eprintln!("error: -s requires a shell, or $SHELL to be set");
                 exit(1)
             });
-            (shell, &argv[1], &argv[2..])
+            shell = Some(PathBuf::from(_shell));
+        }
+
+        let shell = shell.unwrap();
+        let (script, script_args) = { (&argv[0], &argv[1..]) };
+
+        let split_index = script_args
+            .iter()
+            .position(|arg| arg == SEPARATOR)
+            .unwrap_or(script_args.len());
+
+        let _left_args = &script_args[..split_index];
+        let _right_args = if split_index < script_args.len() {
+            &script_args[split_index + 1..]
+        } else {
+            &[]
         };
 
-        let split_index = script_args.iter().position(|arg| arg == SEPARATOR).unwrap_or(script_args.len());
+        let left_args = _left_args.join(" ");
+        let right_args = _right_args.join(" ");
 
-        let left_args = &script_args[..split_index];
-        let right_args = if split_index < script_args.len() { &script_args[split_index + 1..] } else { &[] };
-
-        let left_env = left_args.join(" ");
-        let right_env = right_args.join(" ");
-
-        let left_env_escaped = left_args
+        let left_args_escaped = _left_args
             .iter()
             .map(|s| format!("'{}'", s.replace('\'', r"'\''")))
             .collect::<Vec<String>>()
             .join(" ");
 
-        let right_env_escaped = right_args
+        let right_args_escaped = _right_args
             .iter()
             .map(|s| format!("'{}'", s.replace('\'', r"'\''")))
             .collect::<Vec<String>>()
             .join(" ");
-
-        if pwd.is_none() {
-            if let Some(prefix) = &cargo_prefix {
-                pwd = Some(prefix.clone());
-            } else {
-                eprintln!("warning: Could not find root cargo directory, directory not changed");
-            }
-        }
 
         let mut command = Command::new(shell);
         command.arg("-c");
         command.arg(format!("f() {{ {script}; }}; f \"$@\""));
         command.arg("_"); // dummy $0
         command.args(script_args);
-        command.env("LEFT_ARGS", left_env);
-        command.env("RIGHT_ARGS", right_env);
-        command.env("_LEFT_ARGS", left_env_escaped);
-        command.env("_RIGHT_ARGS", right_env_escaped);
-
-        if let Ok(current) = env::current_dir() {
-            command.env("LPWD", current);
-        } {
-            eprintln!("warning: Could not determine current directory to store in LPWD");
-        }
+        command.env("LEFT_ARGS", left_args);
+        command.env("RIGHT_ARGS", right_args);
+        command.env("_LEFT_ARGS", left_args_escaped);
+        command.env("_RIGHT_ARGS", right_args_escaped);
 
         command
     } else {
         let mut command = Command::new(&argv[0]);
-        let replaced_args: Vec<String> = argv[1..].iter()
+        let replaced_args: Vec<String> = argv[1..]
+            .iter()
             .map(|arg| replace_shell_vars(arg))
             .collect();
 
@@ -154,12 +163,30 @@ fn main() {
 
     command.envs(env_vars);
 
+    let cargo_prefix = find_cargo_prefix();
+
+    // set pwd if root_opt
+    if pwd.is_none() && root_opt {
+        if let Some(prefix) = &cargo_prefix {
+            pwd = Some(prefix.clone());
+        } else {
+            eprintln!("warning: Could not find root cargo directory, directory not changed");
+        }
+    }
+
+    let original_pwd = env::current_dir();
+
+    // change_dir to pwd
     if let Some(path) = pwd {
         if path.is_relative() {
             if let Some(ref prefix) = cargo_prefix {
                 let path = prefix.join(&path);
                 if let Err(e) = env::set_current_dir(&path) {
-                    eprintln!("error: could not change to directory '{}': {}", path.display(), e);
+                    eprintln!(
+                        "error: could not change to directory '{}': {}",
+                        path.display(),
+                        e
+                    );
                     exit(1);
                 }
             } else {
@@ -167,11 +194,23 @@ fn main() {
                 exit(1);
             }
         } else if let Err(e) = env::set_current_dir(&path) {
-            eprintln!("error: could not change to directory '{}': {}", path.display(), e);
+            eprintln!(
+                "error: could not change to directory '{}': {}",
+                path.display(),
+                e
+            );
             exit(1);
         }
     }
 
+    // store original
+    if let Ok(current) = original_pwd {
+        command.env("LPWD", current);
+    } else {
+        eprintln!("warning: Could not determine current directory to store in LPWD");
+    }
+
+    // store cargo_prefix
     if let Some(ref prefix) = cargo_prefix {
         command.env("CARGO_PREFIX", prefix);
     }
@@ -191,7 +230,7 @@ fn main() {
                 } else {
                     exit(status.code().unwrap_or(1));
                 }
-            },
+            }
             Err(e) => eprintln!("Could not spawn: {e}"),
         }
     }
