@@ -18,154 +18,231 @@ fn find_cargo_prefix() -> Option<PathBuf> {
     }
 }
 
+use std::ffi::{OsString, OsStr};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+
+fn join_os_strings(args: &[OsString]) -> OsString {
+    let mut result = OsString::new();
+    let mut first = true;
+    for arg in args {
+        if !first {
+            result.push(" ");
+        }
+        result.push(arg);
+        first = false;
+    }
+    result
+}
+
+fn quote_shell_args(args: &[OsString]) -> Result<String, &'static str> {
+    let mut result = String::new();
+
+    for item in args {
+        let s = item.to_str().ok_or("argument not valid UTF-8")?;
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push('\'');
+        result.push_str(&s.replace('\'', r"'\''"));
+        result.push('\'');
+    }
+
+    Ok(result)
+}
+
+#[cfg(unix)]
+fn contains_equal(s: &OsStr) -> Option<(OsString, OsString)> {
+
+    let bytes = s.as_bytes();
+    bytes.iter().position(|&b| b == b'=').map(|idx| {
+        let (lhs_bytes, rhs_bytes) = bytes.split_at(idx);
+        let lhs = OsString::from_vec(lhs_bytes.to_vec());
+        let rhs = OsString::from_vec(rhs_bytes[1..].to_vec());
+        (lhs, rhs)
+    })
+}
+
+#[cfg(windows)]
+fn contains_equal(s: &OsStr) -> Option<(OsString, OsString)> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+
+    let wide: Vec<u16> = s.encode_wide().collect();
+    if let Some(idx) = wide.iter().position(|&c| c == b'=' as u16) {
+        let lhs = OsString::from_wide(&wide[..idx]);
+        let rhs = OsString::from_wide(&wide[idx + 1..]);
+        Some((lhs, rhs))
+    } else {
+        None
+    }
+}
+
+
+fn err1(msg: &str) -> ! {
+    eprintln!("error: {}", msg);
+    exit(1);
+}
+
 const VAR_REGEX: &str = "[A-Za-z_][A-Za-z0-9_]*";
 
-fn replace_shell_vars(input: &str) -> String {
-    let re = Regex::new(&format!(
-        r"(?P<escape>\\)?\$(?P<var>{VAR_REGEX}|\{{{VAR_REGEX}\}})"
-    ))
-    .unwrap();
-    re.replace_all(input, |caps: &regex::Captures| {
-        if caps.name("escape").is_some() {
-            format!("${}", &caps["var"])
-        } else {
-            let var = &caps["var"];
-            let key = if var.starts_with('{') && var.ends_with('}') {
-                &var[1..var.len() - 1]
-            } else {
-                var
-            };
-            env::var(key).unwrap_or_default()
-        }
-    })
-    .into_owned()
+fn replace_shell_vars(input: &OsStr) -> Result<String, &OsStr> {
+    if let Some(input) = input.to_str() {
+        let re = Regex::new(&format!(
+            r"(?P<escape>\\)?\$(?P<var>{VAR_REGEX}|\{{{VAR_REGEX}\}})"
+        ))
+        .unwrap();
+        Ok(
+            re.replace_all(input, |caps: &regex::Captures| {
+                if caps.name("escape").is_some() {
+                    format!("${}", &caps["var"])
+                } else {
+                    let var = &caps["var"];
+                    let key = if var.starts_with('{') && var.ends_with('}') {
+                        &var[1..var.len() - 1]
+                    } else {
+                        var
+                    };
+                    env::var(key).unwrap_or_default()
+                }
+            })
+            .into_owned()
+        )
+    } else {
+        Err(input)
+    }
+    
 }
 
 fn main() {
     const SEPARATOR: &str = "--";
 
     // does args over args_os present any actual problems? Unfamiliar with windows shell.
-    let mut args = env::args().skip(1).peekable();
+    let mut args = env::args_os().skip(1).peekable();
     let mut pwd: Option<PathBuf> = None;
 
-    if args.peek().map(String::as_str) == Some("exec") {
-        args.next();
-    }
+    args.next_if(|s| s == OsStr::new("exec"));
 
     // argparse
 
     let mut shell_opt = false;
     let mut root_opt = false;
-    let mut shell: Option<PathBuf> = None;
+    let mut shell: Option<OsString> = None;
+    let mut last = None;
 
-    if let Some(s) = args.next_if(|s| s.starts_with('-')) {
-        for c in s.chars().skip(1) {
-            match c {
-                's' => shell_opt = true,
-                'r' => root_opt = true,
-                _ => eprintln!("warning: invalid option -{c}, ignoring"),
-            }
-        }
-    }
+    let mut env_vars: HashMap<OsString, OsString> = HashMap::new();
 
-    // parse env var
-    let argv: Vec<String> = args.collect();
-
-    let env_var_re = Regex::new(&format!(r"^({VAR_REGEX})=(.*)$")).unwrap();
-    let mut env_vars: HashMap<String, String> = HashMap::new();
-
-    // todo: what policy for binaries with '='?
-    let mut cmd_index: usize = 0;
-    for (i, arg) in argv.iter().enumerate() {
-        if let Some(caps) = env_var_re.captures(arg) {
-            let key = caps.get(1).unwrap().as_str();
-            let value = caps.get(2).unwrap().as_str();
-            if key == "PWD" {
+    for arg in args.by_ref() {
+        if let Some((key, value)) = contains_equal(&arg) {
+            if key == OsStr::new("PWD") {
                 pwd = Some(PathBuf::from(value));
-            } else if key == "SHELL" {
-                shell = Some(PathBuf::from(value));
+            } else if key == OsStr::new("SHELL") {
+                shell = Some(value);
             } else {
-                env_vars.insert(key.into(), value.into());
+                env_vars.insert(key, value);
             }
-            cmd_index = i + 1;
         } else {
+            last = Some(arg);
             break;
         }
     }
 
-    let argv = &argv[cmd_index..];
+    let last = last.unwrap_or_else(|| err1("Must specify command to execute"));
 
-    if argv.is_empty() {
-        eprintln!("error: Must specify command to execute");
-        exit(1);
-    }
+    // require utf8 for the rest
+    // let mut argv = args.collect::<Vec<OsString>>();
+
+    let mut script = if let Some(arg0) = last.to_str() {
+        if arg0 == "--" {
+            args.next().unwrap_or_else(|| err1("Must specify command to execute"))
+        } else {
+            for c in arg0.chars().skip(1) {
+                match c {
+                    's' => shell_opt = true,
+                    'r' => root_opt = true,
+                    _ => eprintln!("warning: invalid option -{c}, ignoring"),
+                }
+            }
+            args.next().unwrap_or_else(|| err1("Must specify command to execute"))
+        }
+    } else {
+        last
+    };
 
     let mut command = if shell_opt {
-        if shell.is_none() {
-            let _shell = env::var("SHELL").unwrap_or_else(|_| {
-                eprintln!("error: -s requires a shell, or $SHELL to be set");
-                exit(1)
-            });
-            shell = Some(PathBuf::from(_shell));
-        }
+        // get default shell
+        let shell = shell.unwrap_or(
+    OsString::from(
+                env::var("SHELL").unwrap_or_else(|_| {
+                    err1("error: -s requires a shell, or $SHELL to be set");
+                })
+            )
+        );
 
-        let shell = shell.unwrap();
-        let (script, script_args) = { (&argv[0], &argv[1..]) };
+        let args_vec: Vec<OsString> = args.collect(); // ArgsOs can't be cloned
 
-        let split_index = script_args
-            .iter()
-            .position(|arg| arg == SEPARATOR)
-            .unwrap_or(script_args.len());
+        // try provide args to script
+        script = if let Some(script) = script.to_str() {
+            OsString::from(format!("f() {{ {script} ; }}; f \"$@\""))
+        } else {
+            if ! args_vec.is_empty() {
+                eprintln!("warning: Script contains invalid UTF-8, arguments not passed.")
+            }
+            script
+        };
 
-        let _left_args = &script_args[..split_index];
-        let _right_args = if split_index < script_args.len() {
-            &script_args[split_index + 1..]
+        let mut command = Command::new(shell);
+        command.arg("-c");
+        command.arg(script);
+        command.arg("_"); // dummy $0
+        command.args(args_vec.iter());
+        
+        // (try) provide left/right_arg env vars
+        let split_index = args_vec
+        .iter()
+        .position(|arg| arg.to_str() == Some(SEPARATOR))
+        .unwrap_or(args_vec.len());
+
+        let _left_args = &args_vec[..split_index];
+        let _right_args = if split_index < args_vec.len() {
+            &args_vec[split_index + 1..]
         } else {
             &[]
         };
 
-        let left_args = _left_args.join(" ");
-        let right_args = _right_args.join(" ");
+        let left_args = join_os_strings(_left_args);
+        let right_args = join_os_strings(_right_args);
 
-        let left_args_escaped = _left_args
-            .iter()
-            .map(|s| format!("'{}'", s.replace('\'', r"'\''")))
-            .collect::<Vec<String>>()
-            .join(" ");
-
-        let right_args_escaped = _right_args
-            .iter()
-            .map(|s| format!("'{}'", s.replace('\'', r"'\''")))
-            .collect::<Vec<String>>()
-            .join(" ");
-
-        let mut command = Command::new(shell);
-        command.arg("-c");
-        command.arg(format!("f() {{ {script}; }}; f \"$@\""));
-        command.arg("_"); // dummy $0
-        command.args(script_args);
         command.env("LEFT_ARGS", left_args);
         command.env("RIGHT_ARGS", right_args);
-        command.env("_LEFT_ARGS", left_args_escaped);
-        command.env("_RIGHT_ARGS", right_args_escaped);
+
+        if let Ok(escaped) = quote_shell_args(_left_args) {
+            command.env("_LEFT_ARGS", escaped);
+        }
+        if let Ok(escaped) = quote_shell_args(_right_args) {
+            command.env("_RIGHT_ARGS", escaped);
+        }
 
         command
     } else {
-        let mut command = Command::new(&argv[0]);
-        let replaced_args: Vec<String> = argv[1..]
-            .iter()
-            .map(|arg| replace_shell_vars(arg))
-            .collect();
+        // run a command directly, replacing variables (replacements fail silently, is there a better way?)
+        let mut command = Command::new(script);
+        for arg in args {
+            if let Ok(arg) = replace_shell_vars(&arg) {
+                command.arg(arg);
+            } else {
+                command.arg(arg);
+            }
+        }
 
-        command.args(&replaced_args);
         command
     };
 
     command.envs(env_vars);
 
+    let original_pwd = env::current_dir();
     let cargo_prefix = find_cargo_prefix();
 
-    // set pwd if root_opt
+    // if root_opt, default pwd
     if pwd.is_none() && root_opt {
         if let Some(prefix) = &cargo_prefix {
             pwd = Some(prefix.clone());
@@ -173,8 +250,6 @@ fn main() {
             eprintln!("warning: Could not find root cargo directory, directory not changed");
         }
     }
-
-    let original_pwd = env::current_dir();
 
     // change_dir to pwd
     if let Some(path) = pwd {
@@ -190,8 +265,7 @@ fn main() {
                     exit(1);
                 }
             } else {
-                eprintln!("error: PWD is relative but CARGO_PREFIX not found.");
-                exit(1);
+                err1("error: PWD is relative but CARGO_PREFIX not found.");
             }
         } else if let Err(e) = env::set_current_dir(&path) {
             eprintln!(
@@ -203,14 +277,12 @@ fn main() {
         }
     }
 
-    // store original
+    // store original: fail silently
     if let Ok(current) = original_pwd {
         command.env("LPWD", current);
-    } else {
-        eprintln!("warning: Could not determine current directory to store in LPWD");
     }
 
-    // store cargo_prefix
+    // store cargo_prefix: fail silently
     if let Some(ref prefix) = cargo_prefix {
         command.env("CARGO_PREFIX", prefix);
     }

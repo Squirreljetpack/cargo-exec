@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2025-08-04
+
+- Directly parse OsStr arguments for windows compatibility
+- various bugfix and refactor
+
 ## [0.1.2] - 2025-08-04
 
 - Only change directory with the `-r` flag

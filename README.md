@@ -82,7 +82,7 @@ cc = [
 #       LEFT_ARGS and RIGHT_ARGS are the non-escaped variants, buyer beware!
 ```
 
-You can also set your own environment variables preceding all arguments:
+You can also set your own environment variables preceding all arguments and options:
 
 ```toml
 [alias]
