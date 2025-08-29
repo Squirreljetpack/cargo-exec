@@ -148,9 +148,6 @@ fn main() {
 
     let last = last.unwrap_or_else(|| err1("Must specify command to execute"));
 
-    // require utf8 for the rest
-    // let mut argv = args.collect::<Vec<OsString>>();
-
     let mut script = if let Some(arg0) = last.to_str() {
         if arg0 == "--" {
             args.next().unwrap_or_else(|| err1("Must specify command to execute"))
@@ -197,16 +194,21 @@ fn main() {
         command.args(args_vec.iter());
         
         // (try) provide left/right_arg env vars
-        let split_index = args_vec
-        .iter()
-        .position(|arg| arg.to_str() == Some(SEPARATOR))
-        .unwrap_or(args_vec.len());
-
-        let _left_args = &args_vec[..split_index];
-        let _right_args = if split_index < args_vec.len() {
-            &args_vec[split_index + 1..]
+        // if first argument is not a flag, all arguments are right args per standard cargo subcommand behavior.
+        let (_left_args, _right_args) = if args_vec.first().and_then(|s| s.to_str()).is_some_and(|s| s.starts_with('-')) {
+            let split_index = args_vec.iter()
+                .position(|arg| arg.to_str() == Some(SEPARATOR))
+                .unwrap_or(args_vec.len());
+            (
+                &args_vec[..split_index],
+                if split_index < args_vec.len() {
+                    &args_vec[split_index + 1..]
+                } else {
+                    &[]
+                }
+            )
         } else {
-            &[]
+            (&[] as &[OsString], &args_vec[..])
         };
 
         let left_args = join_os_strings(_left_args);
