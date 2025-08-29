@@ -17,23 +17,20 @@ Add the following to `$PROJECT_DIR/.cargo/config.toml` or `~/.cargo/config.toml`
 ```toml
 [alias]
 crumpets = 'clippy -- --allow warnings' # all cargo aliases are interpreted as cargo subcommands
-# cargo alias allows you to run arbitrary commands
 
+# cargo-exec allows you to get around this limitation
 # just prefix your command with 'exec'
-butter = [
+
+hail = [
   'exec',
-  'sh',
-  '-c',
-  'cargo build && cargo test && RUST_LOG=debug cargo run',
+  'echo',
+  'hello',
+  'world',
 ]
-tea = [
-  'exec',
-  '-s',
-  'cargo insta test; cargo insta review',
-] # see the next section about this shorthand
+
 ```
 
-then run `cargo butter`.
+then run `cargo hail`.
 
 # Arguments
 
@@ -42,8 +39,14 @@ You can execute an inline shell script using the `-s` flag:
 ```toml
 [alias]
 once = ['exec', '-s', 'zsh', 'rustc $1 && ./${1%.*}']
-# If only one argument follows, try and default to `$SHELL`
-once = ['exec', '-s', 'rustc $1 && ./${1%.*}']
+
+# If only one argument follows, will default to `$SHELL`
+tea = ['exec', '-s', '''
+if cargo tree --workspace --edges dev --depth 1 --prefix none | grep -q '^insta'; then
+  eval cargo insta test --review "$_LEFT_ARGS" -- "$_RIGHT_ARGS"
+else
+  cargo test "$_LEFT_ARGS" -- "$_RIGHT_ARGS"
+fi''']
 ```
 
 and then invoke with `cargo once script.rs`.

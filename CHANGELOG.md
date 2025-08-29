@@ -1,6 +1,8 @@
-# Changelog
-
-All notable changes to this project will be documented in this file.
+## [0.1.4] - 2025-08-29
+-  Initial positional arguments are now passed to right_args
+-  Initial env var declarations are now substituted
+-  -w flag added, which splits single strings.
+-  -h for help
 
 ## [0.1.3] - 2025-08-04
 
