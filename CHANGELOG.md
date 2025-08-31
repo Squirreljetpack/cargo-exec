@@ -1,3 +1,6 @@
+## [0.2.0] - 2025-08-31
+- Rerelease 0.1.4
+
 ## [0.1.4] - 2025-08-29
 -  Initial positional arguments are now passed to right_args
 -  Initial env var declarations are now substituted

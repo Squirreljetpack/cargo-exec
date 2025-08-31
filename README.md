@@ -20,49 +20,39 @@ crumpets = 'clippy -- --allow warnings' # all cargo aliases are interpreted as c
 
 # cargo-exec allows you to get around this limitation
 # just prefix your command with 'exec'
-
-hail = [
+declare = [
   'exec',
   'echo',
-  'hello',
-  'world',
 ]
 
 ```
 
-then run `cargo hail`.
+then run `cargo exec declare words`.
 
 # Arguments
 
-You can execute an inline shell script using the `-s` flag:
+You can define an inline shell script using the `-s` flag:
 
 ```toml
 [alias]
-once = ['exec', '-s', 'zsh', 'rustc $1 && ./${1%.*}']
+taste = ['exec', '-s', 'zsh', 'rustc $1 && ./${1%.*}']
 
-# If only one argument follows, will default to `$SHELL`
+# If only one argument follows, `$SHELL` is used
 tea = ['exec', '-s', '''
 if cargo tree --workspace --edges dev --depth 1 --prefix none | grep -q '^insta'; then
   eval cargo insta test --review "$_LEFT_ARGS" -- "$_RIGHT_ARGS"
 else
-  cargo test "$_LEFT_ARGS" -- "$_RIGHT_ARGS"
+  cargo test "$@"
 fi''']
 ```
 
-and then invoke with `cargo once script.rs`.
-
-Or directly:
-
-```shell
-> cargo exec -s zsh "echo \$1" hi
-hi
-```
+and then invoke with `cargo taste script.rs`.
 
 When `-s` is absent, environment variables in your arguments are evaluated before being passed to the main command. This is a convenience provided to make it easier to define aliases in cases like the following:
 
 ```toml
 [alias]
-toast = "exec cargo run -i brioche -o $HOME/counter/" # to prevent this behavior, escape $ like so: \$HOME
+toast = "exec cargo run -i brioche -o $HOME/counter/" # to prevent evaluation, escape $ like so: \$HOME
 ```
 
 # Environment variables
@@ -70,7 +60,6 @@ toast = "exec cargo run -i brioche -o $HOME/counter/" # to prevent this behavior
 For your convenience, a few environment variables are set inside the shell:
 
 - `CARGO_PREFIX` finds the nearest ancestor directory with `Cargo.toml`
-- `LPWD` contains the original working directory ([see](#working-directory)).
 - `_LEFT_ARGS` and `_RIGHT_ARGS` contain the input arguments split at `--`, and are useful when wrapping other cargo subcommands:
 
 ```toml
@@ -95,6 +84,7 @@ You can also set your own environment variables preceding all arguments and opti
 ### Working directory
 
 If the `-r` flag is set, the working directory is set to `CARGO_PREFIX`, if it was found.
+- `LPWD` contains the original working directory.
 
 Additionally, the working directory can also be set with `PWD`, where relative paths are resolved with respect to `CARGO_PREFIX`.
 
@@ -114,3 +104,24 @@ But:
 1. Although completions for tasks could be defined for cargo-exec, `cargo exec` wouldn't propogate them. Even if they were supported, getting completions for your tasks would involve an extra step during installation.
 2. cargo aliases already implements the correct definition of "tasks" from the hierarchical parsing of config files, getting to offload as much logic as possible seems a good thing to me.
 3. If you're worried about confusing your aliases with your tasks, you can assign your tasks a prefix, like `@mytask`.
+
+**Have you any more useful examples?**
+
+A few more from my own config:
+
+```toml
+# run an integration test
+tbs = ['exec', 'RUSTFLAGS=-Awarnings', '-s', 'cargo test --test "$@" -- --no-capture --test-threads=1']
+
+# fix all issues
+fa = [ 'exec', '-s', '''
+cargo fix --allow-dirty --allow-staged --all-targets --all-features &&
+cargo clippy --fix --allow-dirty --allow-staged --all-features
+''' ]
+
+# show docs with a specific program
+do = ['exec', 'BROWSER=o', '-w', 'cargo doc --open --no-deps --all-features']
+
+# temporary rust playground
+once = ['exec', '-s', '[[ -z $1 ]] && $EDITOR once.rs; file=${1:-once.rs} ; rustc $file && ./${file%.*}']
+```
