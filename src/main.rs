@@ -226,11 +226,12 @@ fn usage() {
 fn main() {
     const SEPARATOR: &str = "--";
 
-    // does args over args_os present any actual problems? Unfamiliar with windows shell.
     let mut args = env::args_os().skip(1).peekable();
     let mut pwd: Option<PathBuf> = None;
 
-    args.next_if(|s| s == OsStr::new("exec"));
+    args.next_if(|s| {
+        s == OsStr::new("exec")
+    });
     // argparse
 
     let mut shell_opt = false;
@@ -379,7 +380,7 @@ fn main() {
     };
 
     command.envs(env_vars);
-
+    
     let original_pwd = env::current_dir();
     let cargo_prefix = find_cargo_prefix();
 
@@ -430,7 +431,7 @@ fn main() {
 
     #[cfg(not(windows))] {
         let err = command.exec();
-        eprintln!("Could not exec: {err}")
+        eprintln!("Could not exec {command:?}: {err}")
     }
 
     #[cfg(windows)] {
@@ -442,7 +443,7 @@ fn main() {
                     exit(status.code().unwrap_or(1));
                 }
             }
-            Err(e) => eprintln!("Could not spawn: {e}"),
+            Err(e) => eprintln!("Could not spawn {command:?}: {e}"),
         }
     }
 
