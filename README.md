@@ -124,4 +124,23 @@ do = ['exec', 'BROWSER=o', '-w', 'cargo doc --open --no-deps --all-features']
 
 # temporary rust playground
 once = ['exec', '-s', '[[ -z $1 ]] && $EDITOR once.rs; file=${1:-once.rs} ; rustc $file && ./${file%.*}']
+
+# Run examples
+rx = ['exec', '-sr', '''
+# run examples
+export RUSTFLAGS=-Awarnings
+example="$(
+  yq -r '.example[] | select(length > 0) | [.name, .path, (.required-features // [] | join(","))] | select(length > 0) | @tsv' Cargo.toml |
+  fzf -d '\t' --with-nth=1 --accept-nth={1}$'\t'{3} --exit-0 \
+  --preview 'bat --color=always --plain {2}' \
+  --preview-window nohidden,wrap,right:70%,border-none \
+  --bind 'ctrl-l:execute($PAGER {2})' \
+  --bind 'alt-l:execute($PAGER "$(dirname -- "$(dirname -- {2})")"/Cargo.toml)'
+)" || return 1
+IFS=$'\t' read -r name features <<<"$example"
+[[ -n "$features" ]] && features="-F $features"
+eval cargo run --example "$name" "$features" "$_LEFT_ARGS" -- "$_RIGHT_ARGS"
+''']
+# Run binary
+rb = 'exec RUSTFLAGS=-Awarnings cargo run --bin'
 ```
