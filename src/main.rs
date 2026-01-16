@@ -1,10 +1,11 @@
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
-#[cfg(not(windows))] use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
-use std::process::{exit, Command};
 use std::iter::Peekable;
+#[cfg(not(windows))]
+use std::os::unix::process::CommandExt;
+use std::path::PathBuf;
+use std::process::{Command, exit};
 use std::str::Chars;
 
 fn find_cargo_prefix() -> Option<PathBuf> {
@@ -173,7 +174,7 @@ impl<'a> Iterator for ShellWords<'a> {
                     }
                     _ => {
                         if c.is_whitespace() {
-                            break
+                            break;
                         } else {
                             word.push(c);
                         }
@@ -229,9 +230,7 @@ fn main() {
     let mut args = env::args_os().skip(1).peekable();
     let mut pwd: Option<PathBuf> = None;
 
-    args.next_if(|s| {
-        s == OsStr::new("exec")
-    });
+    args.next_if(|s| s == OsStr::new("exec"));
     // argparse
 
     let mut shell_opt = false;
@@ -259,7 +258,7 @@ fn main() {
 
     let last = last.unwrap_or_else(|| err1("Must specify command to execute"));
 
-    let mut script = if let Some(arg0) = last.to_str().and_then(|s| s.strip_prefix('-')) {
+    let script = if let Some(arg0) = last.to_str().and_then(|s| s.strip_prefix('-')) {
         if arg0 == "--" {
             args.next()
                 .unwrap_or_else(|| err1("Must specify command to execute"))
@@ -286,23 +285,11 @@ fn main() {
 
     let mut command = if shell_opt {
         // get default shell
-        let shell = shell.unwrap_or(OsString::from(env::var("SHELL").unwrap_or_else(
-            |_| {
-                err1("error: -s requires a shell, or $SHELL to be set");
-            },
-        )));
+        let shell = shell.unwrap_or(OsString::from(env::var("SHELL").unwrap_or_else(|_| {
+            err1("error: -s requires a shell, or $SHELL to be set");
+        })));
 
         let args_vec: Vec<OsString> = args.collect(); // ArgsOs can't be cloned
-
-        // try provide args to script
-        script = if let Some(script) = script.to_str() {
-            OsString::from(format!("f() {{ {script} ; }}; f \"$@\"",))
-        } else {
-            if !args_vec.is_empty() {
-                eprintln!("warning: Script contains invalid UTF-8, arguments not passed.")
-            }
-            script
-        };
 
         let mut command = Command::new(shell);
         command.arg("-c");
@@ -312,27 +299,26 @@ fn main() {
 
         // (try) provide left/right_arg env vars
         // if first argument is not a flag, all arguments are right args per standard cargo subcommand behavior.
-        let (_left_args, _right_args) = 
-            if args_vec
-                .first()
-                .and_then(|s| s.to_str())
-                .is_some_and(|s| s.starts_with('-'))
-            {
-                let split_index = args_vec
-                    .iter()
-                    .position(|arg| arg.to_str() == Some(SEPARATOR))
-                    .unwrap_or(args_vec.len());
-                (
-                    &args_vec[..split_index],
-                    if split_index < args_vec.len() {
-                        &args_vec[split_index + 1..]
-                    } else {
-                        &[]
-                    },
-                )
-            } else {
-                (&[] as &[OsString], &args_vec[..])
-            };
+        let (_left_args, _right_args) = if args_vec
+            .first()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| s.starts_with('-'))
+        {
+            let split_index = args_vec
+                .iter()
+                .position(|arg| arg.to_str() == Some(SEPARATOR))
+                .unwrap_or(args_vec.len());
+            (
+                &args_vec[..split_index],
+                if split_index < args_vec.len() {
+                    &args_vec[split_index + 1..]
+                } else {
+                    &[]
+                },
+            )
+        } else {
+            (&[] as &[OsString], &args_vec[..])
+        };
 
         let left_args = join_os_strings(_left_args);
         let right_args = join_os_strings(_right_args);
@@ -380,7 +366,7 @@ fn main() {
     };
 
     command.envs(env_vars);
-    
+
     let original_pwd = env::current_dir();
     let cargo_prefix = find_cargo_prefix();
 
@@ -429,12 +415,14 @@ fn main() {
         command.env("CARGO_PREFIX", prefix);
     }
 
-    #[cfg(not(windows))] {
+    #[cfg(not(windows))]
+    {
         let err = command.exec();
         eprintln!("Could not exec {command:?}: {err}")
     }
 
-    #[cfg(windows)] {
+    #[cfg(windows)]
+    {
         match command.status() {
             Ok(status) => {
                 if status.success() {
