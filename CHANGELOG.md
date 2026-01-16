@@ -1,5 +1,10 @@
+## [0.2.3] - 2025-10-03
+- Remove unnecessary function wrapping
+- add ci
+
 ## [0.2.2] - 2025-10-03
 - Update README for cargo
+
 ## [0.2.0] - 2025-08-31
 - Rerelease 0.1.4
 
