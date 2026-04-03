@@ -19,6 +19,28 @@ fn find_cargo_prefix() -> Option<PathBuf> {
     }
 }
 
+fn find_cargo_workspace_prefix() -> Option<PathBuf> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
+    let output = Command::new(cargo)
+        .args(["locate-project", "--workspace", "--message-format", "plain"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let manifest = String::from_utf8(output.stdout).ok()?;
+    let manifest = manifest.trim_end_matches(['\r', '\n']);
+    if manifest.is_empty() {
+        return None;
+    }
+
+    PathBuf::from(manifest)
+        .parent()
+        .map(|path| path.to_path_buf())
+}
+
 fn join_os_strings(args: &[OsString]) -> OsString {
     let mut result = OsString::new();
     let mut first = true;
@@ -209,6 +231,8 @@ fn usage() {
 
         -r              Run the command in the project's root directory (where Cargo.toml is).
 
+        -R              Run the command in the workspace root directory.
+
         -w              Splits the first argument following shell parsing rules.
 
         -h              Print this help message and exit.
@@ -233,6 +257,7 @@ fn main() {
 
     let mut shell_opt = false;
     let mut root_opt = false;
+    let mut workspace_root_opt = false;
     let mut word_opt = false;
     let mut shell: Option<OsString> = None;
     let mut last = None;
@@ -265,6 +290,7 @@ fn main() {
                 match c {
                     's' => shell_opt = true,
                     'r' => root_opt = true,
+                    'R' => workspace_root_opt = true,
                     'w' => word_opt = true,
                     'h' => usage(),
                     _ => eprintln!("warning: invalid option -{c}, ignoring"),
@@ -279,6 +305,9 @@ fn main() {
 
     if shell_opt && word_opt {
         eprintln!("warning: -w has no effect when -s is set");
+    }
+    if root_opt && workspace_root_opt {
+        eprintln!("warning: -R overrides -r");
     }
 
     let mut command = if shell_opt {
@@ -369,11 +398,19 @@ fn main() {
     let cargo_prefix = find_cargo_prefix();
 
     // if root_opt, default pwd
-    if pwd.is_none() && root_opt {
-        if let Some(prefix) = &cargo_prefix {
-            pwd = Some(prefix.clone());
-        } else {
-            eprintln!("warning: Could not find root cargo directory, directory not changed");
+    if pwd.is_none() {
+        if workspace_root_opt {
+            if let Some(prefix) = find_cargo_workspace_prefix() {
+                pwd = Some(prefix);
+            } else {
+                eprintln!("warning: Could not find workspace root, directory not changed");
+            }
+        } else if root_opt {
+            if let Some(prefix) = &cargo_prefix {
+                pwd = Some(prefix.clone());
+            } else {
+                eprintln!("warning: Could not find root cargo directory, directory not changed");
+            }
         }
     }
 

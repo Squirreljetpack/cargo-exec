@@ -84,6 +84,7 @@ You can also set your own environment variables preceding all arguments and opti
 ### Working directory
 
 If the `-r` flag is set, the working directory is set to `CARGO_PREFIX`, if it was found.
+If the `-R` flag is set, the working directory is set to the Cargo workspace root instead.
 - `LPWD` contains the original working directory.
 
 Additionally, the working directory can also be set with `PWD`, where relative paths are resolved with respect to `CARGO_PREFIX`.
