@@ -227,7 +227,8 @@ fn usage() {
         Execute arbitrary commands as cargo subcommands.
 
         Options:
-        -s [shell]      Execute the command string by passing to a shell (default: $SHELL).
+        -s[=shell]      Execute the command string by passing to a shell (default: $SHELL).
+                        A custom shell can be specified using -s=shell (e.g., -s=bash).
 
         -r              Run the command in the project's root directory (where Cargo.toml is).
 
@@ -265,6 +266,10 @@ fn main() {
     let mut env_vars: HashMap<OsString, OsString> = HashMap::new();
 
     for arg in args.by_ref() {
+        if arg.to_str().map(|s| s.starts_with('-')).unwrap_or(false) {
+            last = Some(arg);
+            break;
+        }
         if let Some((key, value)) = contains_equal(&arg) {
             if key == OsStr::new("PWD") {
                 pwd = Some(PathBuf::from(value));
@@ -286,9 +291,18 @@ fn main() {
             args.next()
                 .unwrap_or_else(|| err1("Must specify command to execute"))
         } else {
-            for c in arg0.chars() {
+            let mut chars = arg0.char_indices().peekable();
+            while let Some((_, c)) = chars.next() {
                 match c {
-                    's' => shell_opt = true,
+                    's' => {
+                        shell_opt = true;
+                        if chars.peek().map(|&(_, c)| c) == Some('=') {
+                            chars.next(); // skip '='
+                            let start = chars.peek().map(|&(i, _)| i).unwrap_or(arg0.len());
+                            shell = Some(OsString::from(&arg0[start..]));
+                            break;
+                        }
+                    }
                     'r' => root_opt = true,
                     'R' => workspace_root_opt = true,
                     'w' => word_opt = true,
