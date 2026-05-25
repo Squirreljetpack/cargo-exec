@@ -1,3 +1,13 @@
+## [0.3.0] - 2026-05-25
+
+### 🚀 Features
+
+- Add -R to execute in workspace root
+
+### 🐛 Bug Fixes
+
+- Customizable shell
+
 ## [0.2.3] - 2025-10-03
 - Remove unnecessary function wrapping
 - add ci
