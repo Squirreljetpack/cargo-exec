@@ -35,9 +35,9 @@ You can define an inline shell script using the `-s` flag:
 
 ```toml
 [alias]
-taste = ['exec', '-s', 'zsh', 'rustc $1 && ./${1%.*}']
+taste = ['exec', '-s=zsh', 'rustc $1 && ./${1%.*}']
 
-# If only one argument follows, `$SHELL` is used
+# By default, `$SHELL` is used
 tea = ['exec', '-s', '''
 if cargo tree --workspace --edges dev --depth 1 --prefix none | grep -q '^insta'; then
   eval cargo insta test --review "$_LEFT_ARGS" -- "$_RIGHT_ARGS"
@@ -65,8 +65,7 @@ For your convenience, a few environment variables are set inside the shell:
 ```toml
 cc = [
   'exec',
-  '-s',
-  'sh',
+  '-s=sh',
   'if [ -e "$CARGO_PREFIX/clippy.toml" ]; then eval cargo clippy "$_LEFT_ARGS" -- -A clippy::uninlined_format_args "$_RIGHT_ARGS"; else cargo check; fi',
 ]
 # Now (if you have the IDE extension), you can tell rust-analyzer to use cc as your custom cargo-check command
