@@ -84,9 +84,13 @@ You can also set your own environment variables preceding all arguments and opti
 
 If the `-r` flag is set, the working directory is set to `CARGO_PREFIX`, if it was found.
 If the `-R` flag is set, the working directory is set to the Cargo workspace root instead.
+
 - `LPWD` contains the original working directory.
 
 Additionally, the working directory can also be set with `PWD`, where relative paths are resolved with respect to `CARGO_PREFIX`.
+
+> [!NOTE]
+> If `-r`/`-R` cannot find their target directory, cargo-exec prints only a warning, whereas the directory change specified by PWD _must_ succeed. To enforce the directory, use `cargo exec -R PWD=. <args>`, or add a guard in your script such as `cargo exec -sR '[ -e Cargo.toml ] || exit 1'`.
 
 # FAQ
 

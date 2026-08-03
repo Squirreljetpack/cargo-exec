@@ -4,7 +4,7 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::iter::Peekable;
 use std::path::PathBuf;
-use std::process::{Command, exit};
+use std::process::{exit, Command};
 use std::str::Chars;
 
 fn find_cargo_prefix() -> Option<PathBuf> {
@@ -240,6 +240,7 @@ fn usage() {
 
         Arguments:
         <VAR=VALUE>     Sets environment variables.
+        PWD=<dir>       Set the working directory.
         <command>       The command to execute.
         <args>...       Arguments to pass to the command.
         "#
@@ -273,8 +274,6 @@ fn main() {
         if let Some((key, value)) = contains_equal(&arg) {
             if key == OsStr::new("PWD") {
                 pwd = Some(PathBuf::from(value));
-            } else if key == OsStr::new("SHELL") {
-                shell = Some(value);
             } else {
                 env_vars.insert(key, value);
             }
