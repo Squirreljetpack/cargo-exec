@@ -1,3 +1,10 @@
+## [0.3.2] - 2026-11-14
+
+### 🚀 Features
+
+- Document working directory semantics, drop SHELL= interception
+- Link README in help
+
 ## [0.3.0] - 2026-05-25
 
 ### 🚀 Features
