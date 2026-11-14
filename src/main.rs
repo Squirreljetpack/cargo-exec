@@ -243,6 +243,9 @@ fn usage() {
         PWD=<dir>       Set the working directory.
         <command>       The command to execute.
         <args>...       Arguments to pass to the command.
+
+        Docs:
+        https://github.com/Squirreljetpack/cargo-exec/raw/refs/heads/main/README.md
         "#
     );
     exit(0);
